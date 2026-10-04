@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: local-pv
+spec:
+  capacity:
+    storage: 1Gi
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /tmp/k8s-local-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: local-pvc
+spec:
+  volumeName: local-pv
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: data-exchange-pvc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: data-pvc-app
+  template:
+    metadata:
+      labels:
+        app: data-pvc-app
+    spec:
+      containers:
+      - name: busybox
+        image: busybox:latest
+        command: ["/bin/sh", "-c"]
+        args: ["while true; do echo $(date) >> /mnt/data.txt; sleep 5; done"]
+        volumeMounts:
+        - name: pvc-storage
+          mountPath: /mnt
+      - name: multitool
+        image: wbitt/network-multitool:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: HTTP_PORT
+          value: "8080"
+        command: ["/bin/sh", "-c"]
+        args: ["tail -f /mnt/data.txt"]
+        volumeMounts:
+        - name: pvc-storage
+          mountPath: /mnt
+      volumes:
+      - name: pvc-storage
+        persistentVolumeClaim:
+          claimName: local-pvc
